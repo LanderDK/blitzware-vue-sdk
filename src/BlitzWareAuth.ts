@@ -7,17 +7,18 @@ import {
 } from "./types";
 import {
   generateAuthUrl,
-  isTokenValid,
-  fetchUserInfo,
-  setToken,
-  getToken,
-  removeToken,
-  getState,
-  setState,
-  removeState,
   hasAuthParams,
+  isTokenValid,
+  setToken,
+  setState,
+  getState,
+  fetchUserInfo,
+  exchangeCodeForToken,
+  tryRefreshToken,
+  generateSecureState,
+  logoutFromService,
+  clearSession,
 } from "./utils";
-import { nanoid } from "nanoid";
 
 export class BlitzWareAuth {
   private authParams: Ref<BlitzWareAuthParams> = ref({} as BlitzWareAuthParams);
@@ -28,7 +29,7 @@ export class BlitzWareAuth {
 
   constructor(authParams: BlitzWareAuthParams) {
     this.authParams.value = authParams;
-    this.state.value = getState() || nanoid();
+    this.state.value = getState() || generateSecureState();
   }
 
   install(app: App): void {
@@ -48,13 +49,59 @@ export class BlitzWareAuth {
         return;
       }
 
+      // Handle Authorization Code flow
+      const code = urlParams.get("code");
+      if (code) {
+        try {
+          const tokenResponse = await exchangeCodeForToken(
+            code,
+            this.authParams.value.clientId,
+            this.authParams.value.redirectUri
+          );
+
+          setToken("access_token", tokenResponse.access_token);
+          if (tokenResponse.refresh_token) {
+            setToken("refresh_token", tokenResponse.refresh_token);
+          }
+
+          const userData = await fetchUserInfo(this.authParams.value.clientId);
+          this.user.value = userData;
+          this.isAuthenticated.value = true;
+
+          // Clean up URL
+          window.history.replaceState(
+            {},
+            document.title,
+            window.location.pathname
+          );
+        } catch (error) {
+          console.error("Failed to handle authorization code:", error);
+          clearSession();
+          this.isAuthenticated.value = false;
+          this.user.value = null;
+        }
+        this.isLoading.value = false;
+        return;
+      }
+
+      // Handle Implicit flow
       const access_token = urlParams.get("access_token");
       if (access_token) {
         setToken("access_token", access_token);
         this.isAuthenticated.value = true;
-        const data = await fetchUserInfo(access_token);
-        this.user.value = data;
-        this.isLoading.value = false;
+        fetchUserInfo(this.authParams.value.clientId)
+          .then((data) => {
+            this.user.value = data;
+          })
+          .catch((error) => {
+            console.error("Failed to fetch user info:", error);
+            clearSession();
+            this.isAuthenticated.value = false;
+            this.user.value = null;
+          })
+          .finally(() => {
+            this.isLoading.value = false;
+          });
       } else {
         this.isAuthenticated.value = false;
         this.isLoading.value = false;
@@ -64,27 +111,68 @@ export class BlitzWareAuth {
       if (refresh_token) setToken("refresh_token", refresh_token);
     } else {
       if (isTokenValid()) {
-        const data = await fetchUserInfo(getToken("access_token") as string);
-        this.user.value = data;
-        this.isAuthenticated.value = true;
+        fetchUserInfo(this.authParams.value.clientId)
+          .then((data) => {
+            this.user.value = data;
+            this.isAuthenticated.value = true;
+          })
+          .catch((error) => {
+            console.error("Failed to fetch user info:", error);
+            clearSession();
+            this.isAuthenticated.value = false;
+            this.user.value = null;
+          })
+          .finally(() => {
+            this.isLoading.value = false;
+          });
+      } else {
+        tryRefreshToken(this.authParams.value.clientId)
+          .then((tokenResponse) => {
+            setToken("access_token", tokenResponse.access_token);
+            if (tokenResponse.refresh_token) {
+              setToken("refresh_token", tokenResponse.refresh_token);
+            }
+
+            return fetchUserInfo(this.authParams.value.clientId);
+          })
+          .then((data) => {
+            this.user.value = data;
+            this.isAuthenticated.value = true;
+          })
+          .catch((error) => {
+            console.error("Failed to refresh token or fetch user info:", error);
+            clearSession();
+            this.isAuthenticated.value = false;
+            this.user.value = null;
+          })
+          .finally(() => {
+            this.isLoading.value = false;
+          });
       }
-      this.isLoading.value = false;
     }
   }
 
-  login(): void {
-    const newState = nanoid();
+  async login(): Promise<void> {
+    const newState = generateSecureState();
     setState(newState);
-    const authUrl = generateAuthUrl(this.authParams.value, newState);
+    const authUrl = await generateAuthUrl(this.authParams.value, newState);
     window.location.href = authUrl;
   }
 
-  logout(): void {
-    removeToken("access_token");
-    removeToken("refresh_token");
-    removeState();
+  async logout(): Promise<void> {
+    this.isLoading.value = true;
+
+    try {
+      await logoutFromService(this.authParams.value.clientId);
+    } catch (error) {
+      // Log the error but continue with local cleanup
+      console.error("Failed to logout from service:", error);
+    }
+
+    // Always clear local state regardless of service call result
+    clearSession();
     this.isAuthenticated.value = false;
     this.user.value = null;
-    window.location.reload();
+    this.isLoading.value = false;
   }
 }

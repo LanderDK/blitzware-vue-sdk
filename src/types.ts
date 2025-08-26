@@ -14,6 +14,35 @@ export interface BlitzWareAuthUser {
   roles?: string[];
 }
 
+/**
+ * RFC 7662 OAuth2 Token Introspection Response
+ */
+export interface TokenIntrospectionResponse {
+  active: boolean;
+  client_id?: string;
+  username?: string;
+  token_type?: string;
+  exp?: number;
+  iat?: number;
+  sub?: string;
+  aud?: string;
+  iss?: string;
+  jti?: string;
+  scope?: string;
+}
+
+export class BlitzWareAuthError extends Error {
+  code: string;
+  details?: Record<string, any>;
+
+  constructor(message: string, code: string, details?: Record<string, any>) {
+    super(message);
+    this.code = code;
+    this.details = details;
+    this.name = "BlitzWareAuthError";
+  }
+}
+
 export const BLITZWARE_TOKEN = "$blitzware";
 
 export const BLITZWARE_INJECTION_KEY: InjectionKey<BlitzWareAuth> =

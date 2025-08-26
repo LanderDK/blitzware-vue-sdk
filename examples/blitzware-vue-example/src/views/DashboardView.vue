@@ -8,15 +8,26 @@
 
 <script>
 import { useBlitzWareAuth } from 'blitzware-vue-sdk'
+import { useRouter } from 'vue-router'
+
 export default {
-  name: 'LoginView',
+  name: 'DashboardView',
   setup() {
     const BlitzWareAuth = useBlitzWareAuth()
+    const router = useRouter()
 
     return {
       user: BlitzWareAuth.user,
-      logout() {
-        BlitzWareAuth.logout()
+      async logout() {
+        try {
+          await BlitzWareAuth.logout()
+          // Redirect to login after logout
+          router.push('/login')
+        } catch (error) {
+          console.error('Logout failed:', error)
+          // Even if logout fails, redirect to login
+          router.push('/login')
+        }
       }
     }
   }

@@ -1,7 +1,7 @@
 import { createRouter as createVueRouter, createWebHashHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import DashboardView from '../views/DashboardView.vue'
-import { createBlitzWareAuthGuard } from 'blitzware-vue-sdk'
+import { createBlitzWareAuthGuard, createBlitzWareLoginGuard } from 'blitzware-vue-sdk'
 
 export function createRouter(app) {
   return createVueRouter({
@@ -9,17 +9,18 @@ export function createRouter(app) {
       {
         path: '/login',
         name: 'login',
-        component: LoginView
+        component: LoginView,
+        beforeEnter: createBlitzWareLoginGuard(app) // Prevent authenticated users from seeing login
       },
       {
         path: '/dashboard',
         name: 'dashboard',
         component: DashboardView,
-        beforeEnter: createBlitzWareAuthGuard(app)
+        beforeEnter: createBlitzWareAuthGuard(app) // Protect dashboard
       },
       {
         path: '/',
-        redirect: '/login'
+        redirect: '/dashboard' // Redirect to dashboard by default
       }
     ],
     history: createWebHashHistory()

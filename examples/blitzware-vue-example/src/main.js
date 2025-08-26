@@ -14,7 +14,8 @@ app
   .use(
     createBlitzWareAuth({
       clientId: 'your-client-id',
-      redirectUri: 'your-redirect-uri'
+      redirectUri: 'your-redirect-uri',
+      responseType: 'code', // or "token" for implicit flow
     })
   )
   .mount('#app')
